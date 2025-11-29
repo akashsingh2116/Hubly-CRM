@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import vector from "../assets/vector.png";
+import vector from "../assets/Vector.png";
 import dashboardIcon from "../assets/dashboard.png";
 import contactIcon from "../assets/contactcenter.png";
 import analyticsIcon from "../assets/analytics.png";
