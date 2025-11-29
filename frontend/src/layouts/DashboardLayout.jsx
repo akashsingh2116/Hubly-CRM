@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import vectorLogo from "../assets/vector.png";
+import vector from "../assets/vector.png";
 import dashboardIcon from "../assets/dashboard.png";
 import contactIcon from "../assets/contactcenter.png";
 import analyticsIcon from "../assets/analytics.png";
@@ -55,7 +55,7 @@ export default function DashboardLayout() {
         <div className="dash-sidebar-top">
           <div className="dash-sidebar-logo">
             <img
-              src={vectorLogo}
+              src={vector}
               alt="Hubly Logo"
               className="dash-vector-logo"
             />

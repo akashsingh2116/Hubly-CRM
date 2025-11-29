@@ -1552,17 +1552,17 @@ html,
 }
 
 .cc-details-field-icon--contact {
-  background-image: url("../assets/name.png");
+  background-image: url("./assets/name.png");
   background-color: #f9fafb;
 }
 
 .cc-details-field-icon--phone {
-  background-image: url("../assets/phone.png");
+  background-image: url("./assets/phone.png");
   background-color: #f9fafb;
 }
 
 .cc-details-field-icon--mail {
-  background-image: url("../assets/email.png");
+  background-image: url("./assets/email.png");
   background-color: #f9fafb;
 }
 
@@ -1684,7 +1684,7 @@ html,
   width: 14px;
   height: 14px;
   margin-right: 4px;
-  background-image: url("../assets/ticketstatus.png");
+  
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
