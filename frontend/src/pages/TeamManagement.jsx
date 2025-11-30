@@ -1,5 +1,5 @@
 // src/pages/TeamManagement.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { api, getCurrentUser } from "../apiClient";
 
 export default function TeamManagement() {
@@ -20,6 +20,9 @@ export default function TeamManagement() {
     email: "",
     phone: "",
   });
+
+  // 🔹 sort state: asc / desc
+  const [sortDirection, setSortDirection] = useState("asc");
 
   const currentUser = getCurrentUser();
 
@@ -44,6 +47,31 @@ export default function TeamManagement() {
   useEffect(() => {
     loadTeam();
   }, []);
+
+  // 🔹 derive sorted list based on sortDirection
+  const sortedTeam = useMemo(() => {
+    const copy = [...team];
+    copy.sort((a, b) => {
+      const nameA = `${a.firstName || ""} ${a.lastName || ""}`
+        .trim()
+        .toLowerCase();
+      const nameB = `${b.firstName || ""} ${b.lastName || ""}`
+        .trim()
+        .toLowerCase();
+
+      if (sortDirection === "asc") {
+        return nameA.localeCompare(nameB);
+      } else {
+        return nameB.localeCompare(nameA);
+      }
+    });
+    return copy;
+  }, [team, sortDirection]);
+
+  // toggle sort when clicking header
+  function handleToggleSort() {
+    setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+  }
 
   // ---------- MODAL OPEN / CLOSE ----------
   function openAddModal() {
@@ -128,6 +156,8 @@ export default function TeamManagement() {
   }
 
   // ---------- RENDER ----------
+  const isAdminUser = isAdmin();
+
   return (
     <div className="tm-page">
       <header className="tm-header">
@@ -145,8 +175,15 @@ export default function TeamManagement() {
           <table className="tm-table">
             <thead>
               <tr>
-                <th className="tm-col-name">
-                  Full Name <span className="tm-sort-indicator">◊</span>
+                <th
+                  className="tm-col-name"
+                  onClick={handleToggleSort}
+                  style={{ cursor: "pointer" }}
+                >
+                  Full Name{" "}
+                  <span className="tm-sort-indicator">
+                    {sortDirection === "asc" ? "▲" : "▼"}
+                  </span>
                 </th>
                 <th>Phone</th>
                 <th>Email</th>
@@ -159,14 +196,14 @@ export default function TeamManagement() {
                 <tr>
                   <td colSpan={5}>Loading...</td>
                 </tr>
-              ) : team.length === 0 ? (
+              ) : sortedTeam.length === 0 ? (
                 <tr>
                   <td colSpan={5}>No team members yet</td>
                 </tr>
               ) : (
-                team.map((user, index) => {
+                sortedTeam.map((user, index) => {
                   const isUserAdmin = user.role === "admin";
-                  const canEditDelete = isAdmin() && !isUserAdmin; // cannot edit/delete admin
+                  const canEditDelete = isAdminUser && !isUserAdmin; // cannot edit/delete admin
 
                   return (
                     <tr key={user._id}>
@@ -209,7 +246,7 @@ export default function TeamManagement() {
           </table>
         </div>
 
-        {isAdmin() && (
+        {isAdminUser && (
           <div className="tm-add-btn-row">
             <button className="tm-add-btn" onClick={openAddModal}>
               <span className="tm-add-icon">+</span>
