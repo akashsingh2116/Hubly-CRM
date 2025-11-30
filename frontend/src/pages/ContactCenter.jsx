@@ -27,11 +27,15 @@ export default function ContactCenter() {
   const [error, setError] = useState("");
 
   const [team, setTeam] = useState([]);
+
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [assignTargetUser, setAssignTargetUser] = useState(null);
 
   const [showResolveConfirm, setShowResolveConfirm] = useState(false);
   const [resolvingTo, setResolvingTo] = useState("resolved");
+
+  // 🔹 dropdown for "All team members"
+  const [showTeamDropdown, setShowTeamDropdown] = useState(false);
 
   const isAdmin = currentUser?.role === "admin";
 
@@ -148,6 +152,7 @@ export default function ContactCenter() {
         assignedToUserId: assignTargetUser._id,
       });
       setShowAssignModal(false);
+      setShowTeamDropdown(false);
       await loadTickets(statusFilter, searchText);
     } catch (err) {
       setError(err.message || "Failed to assign");
@@ -192,6 +197,17 @@ export default function ContactCenter() {
   function isCustomerMessage(msg) {
     return msg.senderType === "customer" || msg.senderType === "user";
   }
+
+  // label for dropdown current selection
+  const dropdownLabel = (() => {
+    if (assignTargetUser) {
+      return `${assignTargetUser.firstName} ${assignTargetUser.lastName}`;
+    }
+    if (activeTicket?.assignedTo) {
+      return `${activeTicket.assignedTo.firstName} ${activeTicket.assignedTo.lastName}`;
+    }
+    return "Select teammate";
+  })();
 
   // ===============================================================
   // UI START
@@ -393,47 +409,63 @@ export default function ContactCenter() {
 
             {/* TEAMMATES / STATUS */}
             <div className="cc-details-section">
-              <div className="cc-details-section-title">Teammates</div>
+              <div className="cc-details-section-title">Assigned To</div>
 
+              {/* 🔹 This just shows who it's assigned to (read only) */}
               <div className="cc-details-select">
-                <div
-                  className="cc-details-select-main"
-                  onClick={() => {
-                    if (isAdmin) {
-                      setAssignTargetUser(activeTicket.assignedTo || team[0]);
-                      setShowAssignModal(true);
-                    }
-                  }}
-                >
+                <div className="cc-details-select-main">
                   <div className="cc-details-select-avatar" />
                   <span>
                     {activeTicket.assignedTo
                       ? `${activeTicket.assignedTo.firstName} ${activeTicket.assignedTo.lastName}`
-                      : "Assign teammate"}
+                      : "Unassigned"}
                   </span>
+                </div>
+              </div>
+
+              {/* All team members – actual dropdown */}
+              <div className="cc-details-section-subtitle">
+                All team members
+              </div>
+
+              <div
+                className="cc-details-select"
+                onClick={() => {
+                  if (!isAdmin) return;
+                  setShowTeamDropdown((prev) => !prev);
+                }}
+                style={{ cursor: isAdmin ? "pointer" : "default" }}
+              >
+                <div className="cc-details-select-main">
+                  <div className="cc-details-select-avatar" />
+                  <span>{dropdownLabel}</span>
                 </div>
                 <div className="cc-details-select-caret" />
               </div>
 
-              <div className="cc-details-section-subtitle">
-                All team members
-              </div>
-              <div className="cc-details-assign-list">
-                {team.map((u) => (
-                  <button
-                    key={u._id}
-                    className="cc-details-assign-item"
-                    disabled={!isAdmin}
-                    onClick={() => openAssignModal(u)}
-                  >
-                    <div className="cc-details-select-avatar" />
-                    <span>
-                      {u.firstName} {u.lastName}
-                      {u.role === "admin" ? " (Admin)" : ""}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              {showTeamDropdown && (
+                <div className="cc-details-assign-list">
+                  {team.map((u) => (
+                    <button
+                      key={u._id}
+                      className="cc-details-assign-item"
+                      disabled={!isAdmin}
+                      onClick={() => {
+                        if (!isAdmin) return;
+                        setAssignTargetUser(u);
+                        setShowAssignModal(true);
+                        setShowTeamDropdown(false);
+                      }}
+                    >
+                      <div className="cc-details-select-avatar" />
+                      <span>
+                        {u.firstName} {u.lastName}
+                        {u.role === "admin" ? " (Admin)" : ""}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               {/* Ticket status */}
               <div className="cc-details-section-subtitle cc-details-subtitle-with-icon">
