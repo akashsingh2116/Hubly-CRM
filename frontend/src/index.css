@@ -1298,6 +1298,31 @@ html,
 }
 
 /* messages area */
+/* make middle panel allow its content to shrink/scroll */
+.cc-main-panel {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  min-height: 0;           /* 🔹 add this */
+}
+
+/* messages area should also be shrinkable */
+.cc-messages-area {
+  flex: 1;
+  padding: 16px 26px 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;           /* 🔹 add this */
+}
+
+/* actual scroll container */
+.cc-messages-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;      /* optional: keep content off scrollbar */
+  min-height: 0;           /* 🔹 add this (important in some browsers) */
+}
+
 
 .cc-messages-area {
   flex: 1;
