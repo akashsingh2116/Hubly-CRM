@@ -1,43 +1,45 @@
-// backend/src/utils/missedChat.js
 import ChatbotSettings from "../models/ChatbotSettings.js";
-import Ticket from "../models/Ticket.js";
+import { sendMissedChatAlert } from "./email.js";
+import User from "../models/User.js";
 
-let cachedSettings = null;
+let cachedThresholdSeconds = null;
 
-async function getThresholdSeconds() {
-  if (!cachedSettings) {
-    cachedSettings = await ChatbotSettings.getSingleton();
-  }
-  return cachedSettings.missedChatThresholdSeconds || 600; // default 10 min
+export function invalidateSettingsCache() {
+  cachedThresholdSeconds = null;
 }
 
-/**
- * Ensure a single ticket has correct isMissed / missedAt based on:
- * - firstMessageAt
- * - firstResponseAt
- * - missedChatThresholdSeconds
- */
-export async function updateMissedStatusForTicket(ticket) {
-  if (!ticket.firstMessageAt) return ticket;          // no first message = can't be missed
-  if (ticket.firstResponseAt) return ticket;         // already answered
-  if (ticket.status === "resolved") return ticket;   // closed anyway
+async function getThresholdSeconds() {
+  if (cachedThresholdSeconds !== null) return cachedThresholdSeconds;
+  const settings = await ChatbotSettings.getSingleton();
+  cachedThresholdSeconds = settings.missedChatThresholdSeconds || 600;
+  return cachedThresholdSeconds;
+}
 
-  const threshold = await getThresholdSeconds();
-  const diffSeconds =
-    (Date.now() - ticket.firstMessageAt.getTime()) / 1000;
+export async function updateMissedStatusForTicket(ticket) {
+  if (!ticket.firstMessageAt)      return ticket;
+  if (ticket.firstResponseAt)      return ticket;
+  if (ticket.status === "resolved") return ticket;
+
+  const threshold  = await getThresholdSeconds();
+  const diffSeconds = (Date.now() - ticket.firstMessageAt.getTime()) / 1000;
 
   if (diffSeconds >= threshold && !ticket.isMissed) {
     ticket.isMissed = true;
     ticket.missedAt = new Date();
     await ticket.save();
+
+    // Fire-and-forget email to the assigned agent
+    try {
+      const agent = await User.findById(ticket.assignedTo);
+      if (agent) sendMissedChatAlert(ticket, agent).catch(() => {});
+    } catch {
+      // Non-critical — don't let email errors break the response
+    }
   }
 
   return ticket;
 }
 
-/**
- * Helper for lists: make sure all given tickets have fresh missed flags.
- */
 export async function updateMissedStatusForTickets(tickets) {
   await Promise.all(tickets.map((t) => updateMissedStatusForTicket(t)));
   return tickets;

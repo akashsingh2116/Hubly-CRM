@@ -1,47 +1,58 @@
 import express from "express";
 import bcrypt from "bcryptjs";
+import { z } from "zod";
 import User from "../models/User.js";
 import Ticket from "../models/Ticket.js";
 import { authRequired, requireAdmin } from "../middleware/auth.js";
+import { validate } from "../middleware/validate.js";
 
 const router = express.Router();
 
-/**
- * GET /api/users/me
- * Get current logged-in user's profile
- */
-router.get("/me", authRequired, async (req, res) => {
+// ── Validation schemas ────────────────────────────────────────────────────────
+const addMemberSchema = z.object({
+  firstName: z.string().min(1).max(50).trim(),
+  lastName:  z.string().min(1).max(50).trim(),
+  email:     z.string().email().toLowerCase().trim(),
+  phone:     z.string().max(30).trim().optional().default(""),
+});
+
+const editMemberSchema = z.object({
+  firstName: z.string().min(1).max(50).trim().optional(),
+  lastName:  z.string().min(1).max(50).trim().optional(),
+  phone:     z.string().max(30).trim().optional(),
+});
+
+const updateSelfSchema = z.object({
+  firstName: z.string().min(1).max(50).trim().optional(),
+  lastName:  z.string().min(1).max(50).trim().optional(),
+  phone:     z.string().max(30).trim().optional(),
+  password:  z.string().min(6).optional(),
+});
+
+// ── GET /api/users/me ─────────────────────────────────────────────────────────
+router.get("/me", authRequired, async (req, res, next) => {
   try {
     const user = await User.findById(req.user.id).select("-passwordHash");
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (err) {
-    console.error("GET /me error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 
-/**
- * PATCH /api/users/me
- * Update own profile (Settings page)
- * - can change firstName, lastName, phone
- * - if password is changed, we'll handle logout logic later on frontend
- */
-router.patch("/me", authRequired, async (req, res) => {
+// ── PATCH /api/users/me ───────────────────────────────────────────────────────
+router.patch("/me", authRequired, validate(updateSelfSchema), async (req, res, next) => {
   try {
     const { firstName, lastName, phone, password } = req.body;
 
     const updates = {};
-    if (firstName) updates.firstName = firstName;
-    if (lastName) updates.lastName = lastName;
-    if (phone) updates.phone = phone;
+    if (firstName !== undefined) updates.firstName = firstName;
+    if (lastName  !== undefined) updates.lastName  = lastName;
+    if (phone     !== undefined) updates.phone     = phone;
 
     let passwordChanged = false;
     if (password) {
-      const passwordHash = await bcrypt.hash(password, 10);
-      updates.passwordHash = passwordHash;
+      updates.passwordHash = await bcrypt.hash(password, 12);
       passwordChanged = true;
     }
 
@@ -51,168 +62,111 @@ router.patch("/me", authRequired, async (req, res) => {
       { new: true, runValidators: true }
     ).select("-passwordHash");
 
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    // frontend will see this flag and force logout if true
     res.json({ user, passwordChanged });
   } catch (err) {
-    console.error("PATCH /me error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 
-/**
- * GET /api/users
- * Team page list
- * - Admin and Members can see full list
- */
-router.get("/", authRequired, async (req, res) => {
+// ── GET /api/users ────────────────────────────────────────────────────────────
+router.get("/", authRequired, async (req, res, next) => {
   try {
-    const users = await User.find().select("-passwordHash").sort({ firstName: 1, lastName: 1 });
+    const users = await User.find()
+      .select("-passwordHash")
+      .sort({ firstName: 1, lastName: 1 });
     res.json(users);
   } catch (err) {
-    console.error("GET /users error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 
-/**
- * POST /api/users
- * Admin adds a new team member
- * RULES:
- * - Only admin can call
- * - New user is always role "member"
- * - Password must be same as email (per your requirement)
- */
-// POST /api/users
-router.post("/", authRequired, requireAdmin, async (req, res) => {
+// ── POST /api/users ───────────────────────────────────────────────────────────
+router.post("/", authRequired, requireAdmin, validate(addMemberSchema), async (req, res, next) => {
   try {
     const { firstName, lastName, email, phone } = req.body;
 
-    // ✅ Only these 3 are required
-    if (!firstName || !lastName || !email) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
     const existing = await User.findOne({ email });
-    if (existing) {
-      return res.status(409).json({ message: "Email already exists" });
-    }
+    if (existing) return res.status(409).json({ message: "Email already in use" });
 
-    // Password = email (your rule)
-    const rawPassword = email;
-    const passwordHash = await bcrypt.hash(rawPassword, 10);
+    const passwordHash = await bcrypt.hash(email, 12); // default password = email
 
     const user = await User.create({
       firstName,
       lastName,
       email,
-      phone: phone || "", // phone optional
-      role: "member",     // always member
-      passwordHash
+      phone,
+      role: "member",
+      passwordHash,
     });
 
     res.status(201).json({
-      id: user._id,
+      id:        user._id,
       firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role
+      lastName:  user.lastName,
+      email:     user.email,
+      phone:     user.phone,
+      role:      user.role,
     });
   } catch (err) {
-    console.error("POST /users error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 
-
-
-/**
- * PATCH /api/users/:id
- * Admin edits an existing team member
- * RULES:
- * - Cannot edit admin user (no change of role, no editing admin row)
- * - Only firstName, lastName, phone can be changed here
- *   (email & role remain fixed)
- */
-router.patch("/:id", authRequired, requireAdmin, async (req, res) => {
+// ── PATCH /api/users/:id ──────────────────────────────────────────────────────
+router.patch("/:id", authRequired, requireAdmin, validate(editMemberSchema), async (req, res, next) => {
   try {
-    const userId = req.params.id;
-    const { firstName, lastName, phone } = req.body;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
     if (user.role === "admin") {
-      return res.status(400).json({ message: "Admin cannot be edited" });
+      return res.status(400).json({ message: "Admin user cannot be edited here" });
     }
 
+    const { firstName, lastName, phone } = req.body;
     if (firstName !== undefined) user.firstName = firstName;
-    if (lastName !== undefined) user.lastName = lastName;
-    if (phone !== undefined) user.phone = phone;
+    if (lastName  !== undefined) user.lastName  = lastName;
+    if (phone     !== undefined) user.phone     = phone;
 
     await user.save();
 
     res.json({
-      id: user._id,
+      id:        user._id,
       firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      phone: user.phone,
-      role: user.role
+      lastName:  user.lastName,
+      email:     user.email,
+      phone:     user.phone,
+      role:      user.role,
     });
   } catch (err) {
-    console.error("PATCH /users/:id error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 
-/**
- * DELETE /api/users/:id
- * Admin deletes a team member
- * RULES:
- * - Cannot delete admin
- * - Before deleting member, reassign all their tickets to admin
- */
-router.delete("/:id", authRequired, requireAdmin, async (req, res) => {
+// ── DELETE /api/users/:id ─────────────────────────────────────────────────────
+router.delete("/:id", authRequired, requireAdmin, async (req, res, next) => {
   try {
-    const userId = req.params.id;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
     if (user.role === "admin") {
       return res.status(400).json({ message: "Admin cannot be deleted" });
     }
 
-    // find the admin
     const admin = await User.findOne({ role: "admin" });
     if (!admin) {
-      return res
-        .status(500)
-        .json({ message: "No admin found to reassign tickets" });
+      return res.status(500).json({ message: "No admin found to reassign tickets" });
     }
 
-    // reassign tickets assigned to this member back to admin
     await Ticket.updateMany(
       { assignedTo: user._id },
       { $set: { assignedTo: admin._id } }
     );
 
-    // delete user
     await User.deleteOne({ _id: user._id });
 
     res.json({ message: "Team member deleted and tickets reassigned to admin" });
   } catch (err) {
-    console.error("DELETE /users/:id error:", err);
-    res.status(500).json({ message: "Server error" });
+    next(err);
   }
 });
 

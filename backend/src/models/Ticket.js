@@ -1,24 +1,19 @@
-// backend/src/models/Ticket.js
 import mongoose from "mongoose";
 
 const ticketSchema = new mongoose.Schema(
   {
-    // Human readable ticket number: e.g. HUB-0001
     ticketNumber: { type: String, required: true, unique: true },
 
-    // Customer details from landing widget
-    customerName: { type: String, required: true },
+    customerName:  { type: String, required: true },
     customerEmail: { type: String, required: true },
     customerPhone: { type: String, required: true },
 
-    // Where this ticket came from (widget, manual, etc.)
     source: {
       type: String,
       enum: ["widget", "manual", "other"],
       default: "widget",
     },
 
-    // Assigned teammate (admin or member)
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -31,29 +26,38 @@ const ticketSchema = new mongoose.Schema(
       default: "open",
     },
 
-    // When the ticket was marked resolved
-    resolvedAt: { type: Date },
-
-    // First customer message time
-    firstMessageAt: { type: Date },
-
-    // First teammate reply time
+    resolvedAt:      { type: Date },
+    firstMessageAt:  { type: Date },
     firstResponseAt: { type: Date },
 
-    // 🔴 MISSED CHAT FIELDS
     isMissed: { type: Boolean, default: false },
     missedAt: { type: Date },
 
-    // For dashboard list: last message snippet + time + who
-    lastMessageAt: { type: Date },
+    lastMessageAt:      { type: Date },
     lastMessageSnippet: { type: String },
     lastMessageFrom: {
       type: String,
       enum: ["customer", "agent"],
     },
+
+    labels: [{ type: String, trim: true }],
+
+    slaPolicy:                  { type: mongoose.Schema.Types.ObjectId, ref: "SlaPolicy" },
+    slaFirstResponseBreachedAt: { type: Date },
+    slaResolutionBreachedAt:    { type: Date },
+
+    contact: { type: mongoose.Schema.Types.ObjectId, ref: "Contact" },
   },
   { timestamps: true }
 );
+
+// ── Indexes for common query patterns ─────────────────────────────────────────
+ticketSchema.index({ status: 1, assignedTo: 1 });
+ticketSchema.index({ assignedTo: 1, lastMessageAt: -1 });
+ticketSchema.index({ customerEmail: 1 });
+ticketSchema.index({ isMissed: 1 });
+ticketSchema.index({ createdAt: -1 });
+ticketSchema.index({ lastMessageAt: -1 });
 
 const Ticket = mongoose.model("Ticket", ticketSchema);
 

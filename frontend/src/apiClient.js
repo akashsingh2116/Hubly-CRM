@@ -1,10 +1,5 @@
-// src/apiClient.js
-// src/apiClient.js
-const API_BASE =
-  import.meta.env.VITE_API_BASE || "http://localhost:5000";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
-
-// helper to attach token
 function getAuthHeaders() {
   const token = localStorage.getItem("token");
   return token ? { Authorization: `Bearer ${token}` } : {};
@@ -12,86 +7,90 @@ function getAuthHeaders() {
 
 async function handleResponse(res) {
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    let message = `HTTP ${res.status}`;
+    try {
+      const ct   = res.headers.get("content-type") || "";
+      const body = ct.includes("application/json")
+        ? await res.json()
+        : { message: await res.text() };
+      message = body.message || body.error || message;
+    } catch {
+      // ignore parse errors
+    }
+    const err    = new Error(message);
+    err.status   = res.status;
+    throw err;
   }
-  return res.status === 204 ? null : await res.json();
+  return res.status === 204 ? null : res.json();
 }
 
-// main API wrapper
+function buildHeaders(extra = {}) {
+  return { "Content-Type": "application/json", ...getAuthHeaders(), ...extra };
+}
+
 export const api = {
-  get: async (url) => {
-    const res = await fetch(API_BASE + url, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-    });
-    return handleResponse(res);
-  },
+  get: (url) =>
+    fetch(API_BASE + url, { method: "GET", headers: buildHeaders() }).then(
+      handleResponse
+    ),
 
-  post: async (url, data) => {
-    const res = await fetch(API_BASE + url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(data),
-    });
-    return handleResponse(res);
-  },
+  post: (url, data) =>
+    fetch(API_BASE + url, {
+      method:  "POST",
+      headers: buildHeaders(),
+      body:    JSON.stringify(data),
+    }).then(handleResponse),
 
-  put: async (url, data) => {
-    const res = await fetch(API_BASE + url, {
-      method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(data),
-    });
-    return handleResponse(res);
-  },
+  put: (url, data) =>
+    fetch(API_BASE + url, {
+      method:  "PUT",
+      headers: buildHeaders(),
+      body:    JSON.stringify(data),
+    }).then(handleResponse),
 
-  patch: async (url, data) => {
-    const res = await fetch(API_BASE + url, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(data),
-    });
-    return handleResponse(res);
-  },
+  patch: (url, data) =>
+    fetch(API_BASE + url, {
+      method:  "PATCH",
+      headers: buildHeaders(),
+      body:    JSON.stringify(data),
+    }).then(handleResponse),
 
-  delete: async (url) => {
-    const res = await fetch(API_BASE + url, {
-      method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
+  delete: (url) =>
+    fetch(API_BASE + url, { method: "DELETE", headers: buildHeaders() }).then(
+      handleResponse
+    ),
+
+  /** Upload a file (multipart/form-data). Returns { url, filename, ... } */
+  upload: async (file) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await fetch(`${API_BASE}/api/upload`, {
+      method:  "POST",
+      headers: getAuthHeaders(), // no Content-Type — let browser set multipart boundary
+      body:    fd,
     });
     return handleResponse(res);
   },
 };
 
-// auth helpers
+// ── Auth helpers ──────────────────────────────────────────────────────────────
 export function setCurrentUser(user, token) {
   localStorage.setItem("token", token);
   localStorage.setItem("user", JSON.stringify(user));
 }
 
 export function getCurrentUser() {
-  const json = localStorage.getItem("user");
-  return json ? JSON.parse(json) : null;
+  try {
+    const json = localStorage.getItem("user");
+    return json ? JSON.parse(json) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function logout() {
   localStorage.removeItem("token");
   localStorage.removeItem("user");
 }
+
 export { API_BASE };

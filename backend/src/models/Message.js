@@ -1,5 +1,15 @@
-// backend/src/models/Message.js
 import mongoose from "mongoose";
+
+const attachmentSchema = new mongoose.Schema(
+  {
+    url:          { type: String, required: true },
+    filename:     { type: String, required: true },
+    originalName: { type: String },
+    mimetype:     { type: String },
+    size:         { type: Number },
+  },
+  { _id: false }
+);
 
 const messageSchema = new mongoose.Schema(
   {
@@ -10,8 +20,8 @@ const messageSchema = new mongoose.Schema(
     },
     text: {
       type: String,
-      required: true,
       trim: true,
+      default: "",
     },
     senderType: {
       type: String,
@@ -19,14 +29,30 @@ const messageSchema = new mongoose.Schema(
       required: true,
       default: "agent",
     },
-    // for agents we keep a reference to User
+    // Reference to the User who sent this message (agents only)
     sender: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
+    },
+    attachments: {
+      type: [attachmentSchema],
+      default: [],
     },
   },
   { timestamps: true }
 );
 
+// Validate that at least text or one attachment exists
+messageSchema.pre("save", function (next) {
+  if (!this.text && this.attachments.length === 0) {
+    return next(new Error("Message must have text or at least one attachment"));
+  }
+  next();
+});
+
+// ── Indexes ───────────────────────────────────────────────────────────────────
+messageSchema.index({ ticket: 1, createdAt: 1 });
+
 const Message = mongoose.model("Message", messageSchema);
+
 export default Message;

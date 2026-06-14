@@ -1,452 +1,227 @@
-// src/pages/ChatBot.jsx
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, getCurrentUser } from "../apiClient";
+import "../styles/pages.css";
 
 export default function ChatBot() {
-  const navigate = useNavigate();
+  const navigate    = useNavigate();
   const currentUser = getCurrentUser();
+  const isAdmin     = currentUser?.role === "admin";
 
-  // UI state
-  const [headerColor, setHeaderColor] = useState("#1f3c5c");
-  const [bgColor, setBgColor] = useState("#f3f4f7");
-  const [primaryMsg, setPrimaryMsg] = useState("How can I help you?");
+  const [headerColor,  setHeaderColor]  = useState("#1f3c5c");
+  const [bgColor,      setBgColor]      = useState("#f3f4f7");
+  const [primaryMsg,   setPrimaryMsg]   = useState("How can I help you?");
   const [secondaryMsg, setSecondaryMsg] = useState("Ask me anything!");
-  const [welcomeMsg, setWelcomeMsg] = useState(
-    "Want to chat about Hubly? I'm an chatbot here to help you find your way."
+  const [welcomeMsg,   setWelcomeMsg]   = useState(
+    "Want to chat about Hubly? I'm a chatbot here to help you find your way."
   );
-  const [missedTimer, setMissedTimer] = useState({
-    hours: "00",
-    minutes: "10",
-    seconds: "00",
-  });
-
+  const [missedTimer, setMissedTimer] = useState({ hours: "00", minutes: "10", seconds: "00" });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState("");
+  const [success, setSuccess] = useState("");
 
-  const headerSwatches = ["#ffffff", "#000000", "#1f3c5c"];
-  const bgSwatches = ["#ffffff", "#000000", "#f3f4f7"];
+  const HEADER_SWATCHES = ["#1f3c5c","#3b82f6","#6366f1","#10b981","#0f172a","#ffffff"];
+  const BG_SWATCHES     = ["#f3f4f7","#ffffff","#0f172a","#f8fafc","#e2e8f0"];
 
-  // ---------- helpers ----------
-
-  function handleTimerChange(key, value) {
-    if (value.length <= 2) {
-      setMissedTimer((prev) => ({
-        ...prev,
-        [key]: value.replace(/\D/g, ""),
-      }));
-    }
+  function secondsToHMS(s) {
+    s = Math.max(0, s || 0);
+    return { hours: String(Math.floor(s/3600)).padStart(2,"0"), minutes: String(Math.floor((s%3600)/60)).padStart(2,"0"), seconds: String(s%60).padStart(2,"0") };
   }
-
-  function secondsToHMS(totalSeconds) {
-    if (!totalSeconds || totalSeconds < 0) totalSeconds = 0;
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    return {
-      hours: String(h).padStart(2, "0"),
-      minutes: String(m).padStart(2, "0"),
-      seconds: String(s).padStart(2, "0"),
-    };
-  }
-
   function hmsToSeconds({ hours, minutes, seconds }) {
-    const h = parseInt(hours || "0", 10) || 0;
-    const m = parseInt(minutes || "0", 10) || 0;
-    const s = parseInt(seconds || "0", 10) || 0;
-    return h * 3600 + m * 60 + s;
+    return (parseInt(hours||"0")||0)*3600 + (parseInt(minutes||"0")||0)*60 + (parseInt(seconds||"0")||0);
   }
-
-  function saveToLocalStorage(settingsObj) {
-    try {
-      window.localStorage.setItem(
-        "hubly_chatbot_settings",
-        JSON.stringify(settingsObj)
-      );
-    } catch (e) {
-      console.error("Failed to save chatbot settings to localStorage", e);
-    }
+  function saveLocal(s) {
+    try { localStorage.setItem("hubly_chatbot_settings", JSON.stringify(s)); } catch {}
   }
-
-  function handleHeaderColorInput(e) {
-    let value = e.target.value.replace(/[^0-9a-fA-F]/g, "");
-    if (value.length > 6) value = value.slice(0, 6);
-    setHeaderColor("#" + value);
-  }
-
-  function handleBgColorInput(e) {
-    let value = e.target.value.replace(/[^0-9a-fA-F]/g, "");
-    if (value.length > 6) value = value.slice(0, 6);
-    setBgColor("#" + value);
-  }
-
-  // ---------- load settings from backend ----------
 
   useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-      return;
-    }
-
+    if (!currentUser) { navigate("/login"); return; }
     (async () => {
       try {
-        setLoading(true);
-        setError("");
-        const data = await api.get("/api/chatbot/settings");
-
-        const header = data.headerColor || "#1f3c5c";
-        const bg = data.backgroundColor || "#f3f4f7";
-        const msg1 = data.messageLine1 || "How can I help you?";
-        const msg2 = data.messageLine2 || "Ask me anything!";
-        const welcome =
-          data.welcomeMessage ||
-          "Want to chat about Hubly? I'm an chatbot here to help you find your way.";
-        const hms = secondsToHMS(data.missedChatThresholdSeconds || 600);
-
-        setHeaderColor(header);
-        setBgColor(bg);
-        setPrimaryMsg(msg1);
-        setSecondaryMsg(msg2);
-        setWelcomeMsg(welcome);
-        setMissedTimer(hms);
-
-        // sync to localStorage for MiniChat
-        saveToLocalStorage({
-          headerColor: header,
-          backgroundColor: bg,
-          messageLine1: msg1,
-          messageLine2: msg2,
-          welcomeMessage: welcome,
-        });
+        setLoading(true); setError("");
+        const d = await api.get("/api/chatbot/settings");
+        const h = d.headerColor || "#1f3c5c", b = d.backgroundColor || "#f3f4f7";
+        const m1 = d.messageLine1 || "How can I help you?", m2 = d.messageLine2 || "Ask me anything!";
+        const wm = d.welcomeMessage || welcomeMsg;
+        const hms = secondsToHMS(d.missedChatThresholdSeconds || 600);
+        setHeaderColor(h); setBgColor(b); setPrimaryMsg(m1); setSecondaryMsg(m2); setWelcomeMsg(wm); setMissedTimer(hms);
+        saveLocal({ headerColor: h, backgroundColor: b, messageLine1: m1, messageLine2: m2, welcomeMessage: wm });
       } catch (err) {
-        setError(err.message || "Failed to load chatbot settings");
-
-        // fallback – read any localStorage
-        try {
-          const raw = window.localStorage.getItem("hubly_chatbot_settings");
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (parsed.headerColor) setHeaderColor(parsed.headerColor);
-            if (parsed.backgroundColor) setBgColor(parsed.backgroundColor);
-            if (parsed.messageLine1) setPrimaryMsg(parsed.messageLine1);
-            if (parsed.messageLine2) setSecondaryMsg(parsed.messageLine2);
-            if (parsed.welcomeMessage) setWelcomeMsg(parsed.welcomeMessage);
-          }
-        } catch (e) {
-          console.error("Fallback load from localStorage failed", e);
-        }
-      } finally {
-        setLoading(false);
-      }
+        setError(err.message || "Failed to load settings");
+        try { const raw = localStorage.getItem("hubly_chatbot_settings"); if (raw) { const p = JSON.parse(raw); if (p.headerColor) setHeaderColor(p.headerColor); if (p.backgroundColor) setBgColor(p.backgroundColor); if (p.messageLine1) setPrimaryMsg(p.messageLine1); if (p.messageLine2) setSecondaryMsg(p.messageLine2); if (p.welcomeMessage) setWelcomeMsg(p.welcomeMessage); } } catch {}
+      } finally { setLoading(false); }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ---------- save settings to backend ----------
-
   async function handleSave() {
-    if (!currentUser || currentUser.role !== "admin") return;
-
+    if (!isAdmin) return;
     try {
-      setSaving(true);
-      setError("");
-
-      const seconds = hmsToSeconds(missedTimer);
-
-      const payload = {
-        headerColor,
-        backgroundColor: bgColor,
-        messageLine1: primaryMsg,
-        messageLine2: secondaryMsg,
-        welcomeMessage: welcomeMsg,
-        missedChatThresholdSeconds: seconds,
-      };
-
+      setSaving(true); setError(""); setSuccess("");
+      const payload = { headerColor, backgroundColor: bgColor, messageLine1: primaryMsg, messageLine2: secondaryMsg, welcomeMessage: welcomeMsg, missedChatThresholdSeconds: hmsToSeconds(missedTimer) };
       await api.put("/api/chatbot/settings", payload);
-
-      // persist to localStorage so MiniChat updates
-      saveToLocalStorage({
-        headerColor,
-        backgroundColor: bgColor,
-        messageLine1: primaryMsg,
-        messageLine2: secondaryMsg,
-        welcomeMessage: welcomeMsg,
-      });
-    } catch (err) {
-      setError(err.message || "Failed to save chatbot settings");
-    } finally {
-      setSaving(false);
-    }
+      saveLocal({ headerColor, backgroundColor: bgColor, messageLine1: primaryMsg, messageLine2: secondaryMsg, welcomeMessage: welcomeMsg });
+      setSuccess("Settings saved successfully.");
+    } catch (err) { setError(err.message || "Failed to save settings"); }
+    finally { setSaving(false); }
   }
 
-  // ---------- render ----------
-
   return (
-    <div className="cb-page">
-      <header className="cb-header">
-        <h1 className="cb-title">Chat Bot</h1>
-      </header>
-
-      {error && (
-        <div style={{ color: "red", fontSize: 12, marginBottom: 8 }}>
-          {error}
+    <div className="pg">
+      <div className="pg-header">
+        <div className="pg-header__left">
+          <h1 className="pg-title">Chat Widget</h1>
+          <p className="pg-subtitle">Customise the appearance and messages of your live chat widget</p>
         </div>
-      )}
-      {loading && (
-        <div style={{ fontSize: 12, marginBottom: 8 }}>Loading settings…</div>
-      )}
+        {isAdmin && (
+          <div className="pg-header__right">
+            <button className="btn2 btn2--primary" onClick={handleSave} disabled={saving || loading}>
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        )}
+      </div>
 
-      <div className="cb-layout">
-        {/* LEFT: live preview – matches MiniChat layout */}
-        <section className="cb-preview">
-          <div
-            className="chat-popup cb-preview-popup"
-            style={{ backgroundColor: bgColor }}
-          >
-            <header
-              className="chat-popup-header"
-              style={{ backgroundColor: headerColor }}
-            >
-              <div className="chat-popup-avatar" />
-              <div className="chat-popup-title">Hubly</div>
-            </header>
+      {error   && <div className="pg-alert pg-alert--error" style={{ marginBottom: 16 }}>⚠ {error}</div>}
+      {success && <div className="pg-alert pg-alert--success" style={{ marginBottom: 16 }}>✓ {success}</div>}
 
-            <div
-              className="chat-popup-body"
-              style={{ backgroundColor: bgColor }}
-            >
-              <div className="mini-initial-wrapper">
-                <div className="mini-agent-row">
-                  <div className="mini-agent-avatar" />
-                  <div className="mini-agent-bubbles">
-                    <div className="mini-agent-bubble">
-                      <div className="mini-agent-title">
-                        {primaryMsg || "How can I help you?"}
-                      </div>
-                      {secondaryMsg && (
-                        <div className="mini-agent-sub">{secondaryMsg}</div>
-                      )}
+      {loading ? (
+        <div className="pg-loading"><div className="pg-spinner" /> Loading…</div>
+      ) : (
+        <div className="cb2-layout">
+          {/* ── Preview ──────────────────────────────────────────────────── */}
+          <div className="cb2-preview-wrap">
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--p-muted)", letterSpacing: ".06em", textTransform: "uppercase", marginBottom: 10 }}>Live Preview</div>
+            <div className="cb2-browser">
+              <div className="cb2-browser-bar">
+                <div className="cb2-browser-dot cb2-browser-dot--r" />
+                <div className="cb2-browser-dot cb2-browser-dot--y" />
+                <div className="cb2-browser-dot cb2-browser-dot--g" />
+              </div>
+              <div style={{ background: bgColor, padding: 16 }}>
+                {/* Widget preview */}
+                <div style={{ borderRadius: 16, overflow: "hidden", boxShadow: "0 8px 32px rgba(0,0,0,.2)", maxWidth: 280, marginLeft: "auto" }}>
+                  {/* Header */}
+                  <div style={{ background: headerColor, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤖</div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: "#fff" }}>Hubly</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.7)" }}>● Online</div>
                     </div>
+                  </div>
+                  {/* Body */}
+                  <div style={{ background: bgColor, padding: 14 }}>
+                    <div style={{ background: headerColor, borderRadius: 12, padding: 12, marginBottom: 10 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: "#fff", marginBottom: 2 }}>{primaryMsg || "How can I help you?"}</div>
+                      {secondaryMsg && <div style={{ fontSize: 12, color: "rgba(255,255,255,.75)" }}>{secondaryMsg}</div>}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>Introduce yourself</div>
+                    {["Your name", "Your Phone", "Your Email"].map((ph) => (
+                      <div key={ph} style={{ background: "rgba(0,0,0,.05)", borderRadius: 8, padding: "8px 10px", fontSize: 12, color: "#94a3b8", marginBottom: 6 }}>{ph}</div>
+                    ))}
+                    <div style={{ background: headerColor, color: "#fff", borderRadius: 8, padding: "8px 12px", textAlign: "center", fontSize: 12, fontWeight: 600 }}>Start chat →</div>
+                  </div>
+                  {/* Footer */}
+                  <div style={{ background: "#fff", padding: "10px 12px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 8 }}>
+                    <div style={{ flex: 1, background: "#f1f5f9", borderRadius: 8, padding: "6px 10px", fontSize: 12, color: "#94a3b8" }}>Write a message…</div>
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: headerColor, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13 }}>→</div>
                   </div>
                 </div>
 
-                <div className="chat-form mini-intro-card">
-                  <div className="chat-form-title">Introduction Yourself</div>
-
-                  <label className="chat-form-field">
-                    <span>Your name</span>
-                    <input value="" placeholder="Your name" readOnly />
-                  </label>
-
-                  <label className="chat-form-field">
-                    <span>Your Phone</span>
-                    <input value="" placeholder="Your Phone" readOnly />
-                  </label>
-
-                  <label className="chat-form-field">
-                    <span>Your Email</span>
-                    <input value="" placeholder="Your Email" readOnly />
-                  </label>
-
-                  <button className="chat-submit-btn" type="button">
-                    Thank You!
-                  </button>
+                {/* Welcome tooltip */}
+                <div style={{ marginTop: 12, marginLeft: "auto", maxWidth: 240, background: "#fff", borderRadius: 12, padding: 12, boxShadow: "0 4px 16px rgba(0,0,0,.1)", border: "1px solid #e2e8f0", fontSize: 12, color: "#334155", lineHeight: 1.5 }}>
+                  💬 {welcomeMsg}
                 </div>
               </div>
             </div>
-
-            <footer className="chat-popup-footer">
-              <input
-                className="chat-footer-input"
-                placeholder="Write a message"
-                disabled
-              />
-              <button className="chat-footer-send" type="button" disabled />
-            </footer>
           </div>
 
-          {/* tooltip preview – square card like mini tooltip, but static */}
-          <div className="cb-tooltip-preview">
-            <div className="cb-tooltip-card">
-              <div className="cb-tooltip-avatar-dot" />
-              <p className="cb-tooltip-text">{welcomeMsg}</p>
-            </div>
-          </div>
-        </section>
+          {/* ── Settings cards ────────────────────────────────────────────── */}
+          <div className="cb2-cards">
 
-        {/* RIGHT: settings cards */}
-        <section className="cb-settings">
-          {/* Header color */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Header Color</h2>
-            </div>
-            <div className="cb-color-row">
-              {headerSwatches.map((c) => (
-                <button
-                  key={c}
-                  className={
-                    "cb-color-swatch" + (headerColor === c ? " selected" : "")
-                  }
-                  style={{ backgroundColor: c }}
-                  onClick={() => setHeaderColor(c)}
-                  aria-label={`Header color ${c}`}
-                  type="button"
-                />
-              ))}
-            </div>
-            <div className="cb-color-input">
-              <span
-                className="cb-color-preview"
-                style={{ backgroundColor: headerColor }}
-              />
-              <span>#</span>
-              <input
-                value={headerColor.replace("#", "")}
-                onChange={handleHeaderColorInput}
-              />
-            </div>
-          </div>
-
-          {/* Background color */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Custom Background Color</h2>
-            </div>
-            <div className="cb-color-row">
-              {bgSwatches.map((c) => (
-                <button
-                  key={c}
-                  className={
-                    "cb-color-swatch" + (bgColor === c ? " selected" : "")
-                  }
-                  style={{ backgroundColor: c }}
-                  onClick={() => setBgColor(c)}
-                  aria-label={`Background color ${c}`}
-                  type="button"
-                />
-              ))}
-            </div>
-            <div className="cb-color-input">
-              <span
-                className="cb-color-preview"
-                style={{ backgroundColor: bgColor }}
-              />
-              <span>#</span>
-              <input
-                value={bgColor.replace("#", "")}
-                onChange={handleBgColorInput}
-              />
-            </div>
-          </div>
-
-          {/* Customize message */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Customize Message</h2>
-            </div>
-            <div className="cb-text-row">
-              <input
-                className="cb-text-input"
-                value={primaryMsg}
-                onChange={(e) => setPrimaryMsg(e.target.value)}
-              />
-              <span className="cb-edit-icon" />
-            </div>
-            <div className="cb-text-row">
-              <input
-                className="cb-text-input"
-                value={secondaryMsg}
-                onChange={(e) => setSecondaryMsg(e.target.value)}
-              />
-              <span className="cb-edit-icon" />
-            </div>
-          </div>
-
-          {/* Introduction form preview (helper) */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Introduction Form</h2>
-            </div>
-            <div className="cb-intro-preview">
-              <div className="cb-form-label">Your name</div>
-              <div className="cb-form-line" />
-              <div className="cb-form-label">Your Phone</div>
-              <div className="cb-form-line" />
-              <div className="cb-form-label">Your Email</div>
-              <div className="cb-form-line" />
-              <button className="cb-form-btn">Thank You!</button>
-            </div>
-          </div>
-
-          {/* Welcome message */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Welcome Message</h2>
-              <span className="cb-toggle-label">Yes/No</span>
-            </div>
-            <div className="cb-welcome-preview">
-              <p className="cb-welcome-text">{welcomeMsg}</p>
-              <button
-                className="cb-edit-icon cb-edit-icon-inline"
-                type="button"
-              />
-            </div>
-            <textarea
-              className="cb-welcome-input"
-              value={welcomeMsg}
-              onChange={(e) => setWelcomeMsg(e.target.value)}
-            />
-          </div>
-
-          {/* Missed chat timer */}
-          <div className="cb-card">
-            <div className="cb-card-title-row">
-              <h2 className="cb-card-title">Missed chat timer</h2>
-            </div>
-            <div className="cb-timer-grid">
-              <div className="cb-timer-col">
-                <label>Hours</label>
-                <input
-                  value={missedTimer.hours}
-                  onChange={(e) =>
-                    handleTimerChange("hours", e.target.value)
-                  }
-                />
+            {/* Header Color */}
+            <div className="cb2-card">
+              <div className="cb2-card__title">Header Color</div>
+              <div className="cb2-swatches">
+                {HEADER_SWATCHES.map((c) => (
+                  <button key={c} type="button" className={`cb2-swatch${headerColor === c ? " selected" : ""}`}
+                    style={{ background: c, border: headerColor === c ? "2px solid #3b82f6" : "2px solid var(--p-border)" }}
+                    onClick={() => setHeaderColor(c)} />
+                ))}
               </div>
-              <div className="cb-timer-col">
-                <label>Minutes</label>
-                <input
-                  value={missedTimer.minutes}
-                  onChange={(e) =>
-                    handleTimerChange("minutes", e.target.value)
-                  }
-                />
-              </div>
-              <div className="cb-timer-col">
-                <label>Seconds</label>
-                <input
-                  value={missedTimer.seconds}
-                  onChange={(e) =>
-                    handleTimerChange("seconds", e.target.value)
-                  }
-                />
+              <div className="cb2-swatch-custom">
+                <div className="cb2-swatch-preview" style={{ background: headerColor }} />
+                <span style={{ color: "var(--p-muted)", fontSize: 13 }}>#</span>
+                <input className="cb2-swatch-input" value={headerColor.replace("#", "")}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9a-fA-F]/g,"").slice(0,6); setHeaderColor("#"+v); }} />
               </div>
             </div>
-            <div className="cb-timer-actions">
-              <button
-                className="cb-save-btn"
-                type="button"
-                onClick={handleSave}
-                disabled={saving || currentUser?.role !== "admin"}
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
+
+            {/* Background Color */}
+            <div className="cb2-card">
+              <div className="cb2-card__title">Widget Background Color</div>
+              <div className="cb2-swatches">
+                {BG_SWATCHES.map((c) => (
+                  <button key={c} type="button" className={`cb2-swatch${bgColor === c ? " selected" : ""}`}
+                    style={{ background: c, border: bgColor === c ? "2px solid #3b82f6" : "2px solid var(--p-border)" }}
+                    onClick={() => setBgColor(c)} />
+                ))}
+              </div>
+              <div className="cb2-swatch-custom">
+                <div className="cb2-swatch-preview" style={{ background: bgColor }} />
+                <span style={{ color: "var(--p-muted)", fontSize: 13 }}>#</span>
+                <input className="cb2-swatch-input" value={bgColor.replace("#", "")}
+                  onChange={(e) => { const v = e.target.value.replace(/[^0-9a-fA-F]/g,"").slice(0,6); setBgColor("#"+v); }} />
+              </div>
             </div>
+
+            {/* Messages */}
+            <div className="cb2-card">
+              <div className="cb2-card__title">Chat Greeting Messages</div>
+              <div className="pg-field" style={{ marginBottom: 10 }}>
+                <label>Primary message</label>
+                <input className="cb2-text-input" value={primaryMsg} onChange={(e) => setPrimaryMsg(e.target.value)} placeholder="How can I help you?" />
+              </div>
+              <div className="pg-field">
+                <label>Secondary message</label>
+                <input className="cb2-text-input" value={secondaryMsg} onChange={(e) => setSecondaryMsg(e.target.value)} placeholder="Ask me anything!" />
+              </div>
+            </div>
+
+            {/* Welcome message */}
+            <div className="cb2-card">
+              <div className="cb2-card__title">Welcome Tooltip Message</div>
+              <textarea className="cb2-textarea" value={welcomeMsg} onChange={(e) => setWelcomeMsg(e.target.value)} rows={3} />
+              <p style={{ fontSize: 12, color: "var(--p-muted)", marginTop: 6 }}>This appears in the chat bubble tooltip before a visitor opens the widget.</p>
+            </div>
+
+            {/* Missed chat timer */}
+            <div className="cb2-card">
+              <div className="cb2-card__title">Missed Chat Auto-close Timer</div>
+              <p style={{ fontSize: 13, color: "var(--p-muted)", marginBottom: 14 }}>Automatically close a chat if no agent responds within this time.</p>
+              <div className="cb2-timer-row">
+                {["hours","minutes","seconds"].map((k) => (
+                  <div className="cb2-timer-col" key={k}>
+                    <label>{k.charAt(0).toUpperCase() + k.slice(1)}</label>
+                    <input className="cb2-timer-input"
+                      value={missedTimer[k]}
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/\D/g,"").slice(0,2);
+                        setMissedTimer(p => ({ ...p, [k]: v }));
+                      }} />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {!isAdmin && (
+              <div className="pg-alert pg-alert--warning">
+                ⚠ Only admins can save chatbot settings.
+              </div>
+            )}
           </div>
-        </section>
-      </div>
+        </div>
+      )}
     </div>
   );
 }

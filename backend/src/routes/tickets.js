@@ -1,68 +1,76 @@
-// backend/src/routes/tickets.js
 import express from "express";
 import { authRequired } from "../middleware/auth.js";
 import Ticket from "../models/Ticket.js";
 import User from "../models/User.js";
 import { updateMissedStatusForTickets } from "../utils/missedChat.js";
+import { emitTicketUpdated } from "../socket/index.js";
+import { sendTicketAssigned } from "../utils/email.js";
 
 const router = express.Router();
 
 /**
  * GET /api/tickets
- * Query:
- *   status = all | resolved | unresolved
- *   search = string (name/email/phone/ticketNumber)
- *
- *  - Admin  → sees ALL tickets
- *  - Member → sees ONLY tickets where assignedTo = current user
+ * Query: status (all|resolved|unresolved), search, page (default 1), limit (default 30)
+ * Returns: { tickets, pagination: { total, page, limit, pages } }
  */
-router.get("/", authRequired, async (req, res) => {
+router.get("/", authRequired, async (req, res, next) => {
   try {
-    const { status = "all", search = "" } = req.query;
+    const {
+      status = "all",
+      search = "",
+      page  = "1",
+      limit = "30",
+    } = req.query;
+
+    const pageNum  = Math.max(1, parseInt(page, 10)  || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 30));
+    const skip     = (pageNum - 1) * limitNum;
 
     const isAdmin = req.user?.role === "admin";
-    const userId = req.user?.id; // comes from JWT in authRequired
+    const query   = {};
 
-    const query = {};
-
-    // 🔹 role-based restriction
     if (!isAdmin) {
-      // member: only tickets assigned to them
-      // Mongoose will cast string -> ObjectId
-      query.assignedTo = userId;
+      query.assignedTo = req.user.id;
     }
-    // admin: no extra filter => sees all tickets
 
-    // 🔹 status filter
     if (status === "resolved") {
       query.status = "resolved";
     } else if (status === "unresolved") {
-      // unresolved = anything not resolved
       query.status = { $ne: "resolved" };
     }
 
-    // 🔹 text search
-    if (search) {
-      const re = new RegExp(search, "i");
+    if (search.trim()) {
+      const re = new RegExp(search.trim(), "i");
       query.$or = [
-        { customerName: re },
+        { customerName:  re },
         { customerEmail: re },
         { customerPhone: re },
-        { ticketNumber: re },
+        { ticketNumber:  re },
       ];
     }
 
-    let tickets = await Ticket.find(query)
-      .populate("assignedTo")
-      .sort({ lastMessageAt: -1, createdAt: -1 });
+    const [tickets, total] = await Promise.all([
+      Ticket.find(query)
+        .populate("assignedTo", "-passwordHash")
+        .sort({ lastMessageAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum),
+      Ticket.countDocuments(query),
+    ]);
 
-    // 🔹 update missed flags before returning them (keeps your existing logic)
-    tickets = await updateMissedStatusForTickets(tickets);
+    await updateMissedStatusForTickets(tickets);
 
-    res.json(tickets);
+    res.json({
+      tickets,
+      pagination: {
+        total,
+        page:  pageNum,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum),
+      },
+    });
   } catch (err) {
-    console.error("GET /api/tickets error:", err);
-    res.status(500).json({ message: "Failed to load tickets" });
+    next(err);
   }
 });
 
@@ -70,29 +78,34 @@ router.get("/", authRequired, async (req, res) => {
  * PATCH /api/tickets/:ticketId/assign
  * Body: { assignedToUserId }
  */
-router.patch("/:ticketId/assign", authRequired, async (req, res) => {
+router.patch("/:ticketId/assign", authRequired, async (req, res, next) => {
   try {
     const { ticketId } = req.params;
     const { assignedToUserId } = req.body;
 
-    const user = await User.findById(assignedToUserId);
-    if (!user) {
-      return res.status(400).json({ message: "User not found" });
+    if (!assignedToUserId) {
+      return res.status(400).json({ message: "assignedToUserId is required" });
     }
 
-    const ticket = await Ticket.findById(ticketId);
-    if (!ticket) {
-      return res.status(404).json({ message: "Ticket not found" });
-    }
+    const [user, ticket] = await Promise.all([
+      User.findById(assignedToUserId),
+      Ticket.findById(ticketId),
+    ]);
+
+    if (!user)   return res.status(400).json({ message: "User not found" });
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
     ticket.assignedTo = user._id;
     await ticket.save();
 
-    const populated = await Ticket.findById(ticketId).populate("assignedTo");
+    const populated = await Ticket.findById(ticketId).populate("assignedTo", "-passwordHash");
+
+    emitTicketUpdated(ticketId, populated);
+    sendTicketAssigned(ticket, user).catch(() => {}); // fire-and-forget
+
     res.json(populated);
   } catch (err) {
-    console.error("PATCH /api/tickets/:ticketId/assign error:", err);
-    res.status(500).json({ message: "Failed to assign ticket" });
+    next(err);
   }
 });
 
@@ -100,38 +113,91 @@ router.patch("/:ticketId/assign", authRequired, async (req, res) => {
  * PATCH /api/tickets/:ticketId/status
  * Body: { status }
  */
-router.patch("/:ticketId/status", authRequired, async (req, res) => {
+router.patch("/:ticketId/status", authRequired, async (req, res, next) => {
   try {
     const { ticketId } = req.params;
-    const { status } = req.body;
+    const { status }   = req.body;
 
     if (!["open", "in-progress", "resolved"].includes(status)) {
-      return res.status(400).json({ message: "Invalid status" });
+      return res.status(400).json({ message: "Invalid status value" });
     }
 
     const ticket = await Ticket.findById(ticketId);
-    if (!ticket) {
-      return res.status(404).json({ message: "Ticket not found" });
-    }
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
 
     ticket.status = status;
 
     if (status === "resolved") {
       ticket.resolvedAt = new Date();
-      // resolved tickets shouldn't be missed anymore
-      ticket.isMissed = false;
-      ticket.missedAt = undefined;
+      ticket.isMissed   = false;
+      ticket.missedAt   = undefined;
     } else {
       ticket.resolvedAt = undefined;
     }
 
     await ticket.save();
-    const populated = await Ticket.findById(ticketId).populate("assignedTo");
+
+    const populated = await Ticket.findById(ticketId).populate("assignedTo", "-passwordHash");
+
+    emitTicketUpdated(ticketId, populated);
+
     res.json(populated);
   } catch (err) {
-    console.error("PATCH /api/tickets/:ticketId/status error:", err);
-    res.status(500).json({ message: "Failed to update status" });
+    next(err);
   }
+});
+
+/**
+ * PATCH /api/tickets/:ticketId/labels
+ * Body: { labels: string[] }
+ */
+router.patch("/:ticketId/labels", authRequired, async (req, res, next) => {
+  try {
+    const { labels } = req.body;
+    if (!Array.isArray(labels)) {
+      return res.status(400).json({ message: "labels must be an array" });
+    }
+    const ticket = await Ticket.findByIdAndUpdate(
+      req.params.ticketId,
+      { labels },
+      { new: true }
+    ).populate("assignedTo", "-passwordHash");
+    if (!ticket) return res.status(404).json({ message: "Ticket not found" });
+    emitTicketUpdated(req.params.ticketId, ticket);
+    res.json(ticket);
+  } catch (err) { next(err); }
+});
+
+/**
+ * POST /api/tickets/bulk
+ * Body: { ticketIds: string[], action: "resolve"|"assign"|"delete", assignedTo?: string }
+ */
+router.post("/bulk", authRequired, async (req, res, next) => {
+  try {
+    const { ticketIds, action, assignedTo } = req.body;
+    if (!Array.isArray(ticketIds) || ticketIds.length === 0) {
+      return res.status(400).json({ message: "ticketIds required" });
+    }
+
+    if (action === "resolve") {
+      await Ticket.updateMany(
+        { _id: { $in: ticketIds } },
+        { status: "resolved", resolvedAt: new Date(), isMissed: false }
+      );
+    } else if (action === "assign") {
+      if (!assignedTo) return res.status(400).json({ message: "assignedTo required" });
+      await Ticket.updateMany({ _id: { $in: ticketIds } }, { assignedTo });
+    } else if (action === "delete") {
+      if (req.user.role !== "admin") {
+        return res.status(403).json({ message: "Admin only" });
+      }
+      await Ticket.deleteMany({ _id: { $in: ticketIds } });
+    } else {
+      return res.status(400).json({ message: "Invalid action" });
+    }
+
+    res.json({ ok: true, affected: ticketIds.length });
+  } catch (err) { next(err); }
 });
 
 export default router;

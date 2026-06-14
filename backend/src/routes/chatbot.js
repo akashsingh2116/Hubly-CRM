@@ -1,23 +1,35 @@
-// backend/src/routes/chatbot.js
 import express from "express";
 import ChatbotSettings from "../models/ChatbotSettings.js";
-import { authRequired } from "../middleware/auth.js"; // ✅ correct import
+import { authRequired } from "../middleware/auth.js";
+import { invalidateSettingsCache } from "../utils/missedChat.js";
 
 const router = express.Router();
 
-// GET current settings (no auth – landing page + preview use this)
-router.get("/settings", async (req, res) => {
+const EDITABLE_FIELDS = [
+  "headerColor",
+  "backgroundColor",
+  "messageLine1",
+  "messageLine2",
+  "introNameLabel",
+  "introPhoneLabel",
+  "introEmailLabel",
+  "introSubmitLabel",
+  "welcomeMessage",
+  "missedChatThresholdSeconds",
+];
+
+// GET /api/chatbot/settings — public (landing page + widget use this)
+router.get("/settings", async (req, res, next) => {
   try {
     const settings = await ChatbotSettings.getSingleton();
     res.json(settings);
   } catch (err) {
-    console.error("GET /chatbot/settings error:", err);
-    res.status(500).json({ message: "Failed to load chatbot settings" });
+    next(err);
   }
 });
 
-// UPDATE settings – only admin
-router.put("/settings", authRequired, async (req, res) => {
+// PUT /api/chatbot/settings — admin only
+router.put("/settings", authRequired, async (req, res, next) => {
   try {
     if (req.user.role !== "admin") {
       return res.status(403).json({ message: "Only admin can edit settings" });
@@ -25,30 +37,18 @@ router.put("/settings", authRequired, async (req, res) => {
 
     const settings = await ChatbotSettings.getSingleton();
 
-    const fields = [
-      "headerColor",
-      "backgroundColor",
-      "messageLine1",
-      "messageLine2",
-      "introNameLabel",
-      "introPhoneLabel",
-      "introEmailLabel",
-      "introSubmitLabel",
-      "welcomeMessage",
-      "missedChatThresholdSeconds",
-    ];
-
-    fields.forEach((f) => {
-      if (req.body[f] !== undefined) {
-        settings[f] = req.body[f];
-      }
+    EDITABLE_FIELDS.forEach((f) => {
+      if (req.body[f] !== undefined) settings[f] = req.body[f];
     });
 
     await settings.save();
+
+    // Invalidate the in-memory cache so the next missedChat check uses new threshold
+    invalidateSettingsCache();
+
     res.json(settings);
   } catch (err) {
-    console.error("PUT /chatbot/settings error:", err);
-    res.status(500).json({ message: "Failed to update chatbot settings" });
+    next(err);
   }
 });
 

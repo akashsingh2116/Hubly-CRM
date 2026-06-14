@@ -17,10 +17,10 @@ html,
 #root {
   height: 100%;
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  background: var(--bg);
-  color: #111827;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--color-bg, var(--bg));
+  color: var(--color-text, #111827);
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ========== GENERIC LAYOUT (DASHBOARD WRAPPER, UNUSED HEADER) ========== */
@@ -3049,3 +3049,147 @@ html,
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ════════════════════════════════════════════════════════════════
+   NEW DASHBOARD LAYOUT  (dl-*)
+   ════════════════════════════════════════════════════════════════ */
+
+.dl-root {
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  background: var(--color-bg, #f7fafc);
+  transition: grid-template-columns .2s;
+}
+.dl-root--collapsed {
+  grid-template-columns: 60px minmax(0, 1fr);
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────── */
+.dl-sidebar {
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: width .2s;
+}
+
+.dl-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  min-height: 60px;
+}
+.dl-brand-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: #3b82f6; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 16px; flex-shrink: 0;
+}
+.dl-brand-name {
+  font-size: 17px; font-weight: 700; color: #f1f5f9; letter-spacing: -.3px;
+}
+.dl-collapse-btn {
+  margin-left: auto; background: none; border: none;
+  color: #64748b; font-size: 18px; cursor: pointer; padding: 2px 4px;
+  border-radius: 4px; flex-shrink: 0;
+}
+.dl-collapse-btn:hover { color: #f1f5f9; }
+
+/* ── Nav ─────────────────────────────────────────────────────── */
+.dl-nav {
+  flex: 1; padding: 12px 10px; display: flex; flex-direction: column; gap: 2px;
+  overflow-y: auto; overflow-x: hidden;
+}
+.dl-nav__link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: 8px;
+  text-decoration: none; color: #94a3b8;
+  font-size: 13.5px; font-weight: 500;
+  transition: background .12s, color .12s;
+  white-space: nowrap; overflow: hidden;
+}
+.dl-nav__link:hover { background: rgba(255,255,255,.07); color: #e2e8f0; }
+.dl-nav__link--active { background: #1e40af; color: #fff; }
+.dl-nav__link--active:hover { background: #1d4ed8; }
+.dl-nav__icon { font-size: 16px; flex-shrink: 0; width: 20px; text-align: center; }
+.dl-nav__label { flex: 1; }
+
+/* ── Sidebar footer ──────────────────────────────────────────── */
+.dl-sidebar__footer {
+  padding: 12px 10px; border-top: 1px solid rgba(255,255,255,.07);
+  display: flex; flex-direction: column; gap: 8px;
+}
+.dl-user { display: flex; align-items: center; gap: 10px; overflow: hidden; }
+.dl-user__avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: #3b82f6; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.dl-user__info { min-width: 0; }
+.dl-user__name { font-size: 12px; font-weight: 600; color: #f1f5f9; truncate: ellipsis; white-space: nowrap; overflow: hidden; }
+.dl-user__role { font-size: 11px; color: #64748b; text-transform: capitalize; }
+.dl-logout-btn {
+  width: 100%; padding: 7px 10px; border-radius: 8px; border: none;
+  background: rgba(239,68,68,.12); color: #f87171;
+  font-size: 12px; cursor: pointer; text-align: left;
+}
+.dl-logout-btn:hover { background: rgba(239,68,68,.2); }
+
+/* ── Main ────────────────────────────────────────────────────── */
+.dl-main { display: flex; flex-direction: column; overflow: hidden; }
+
+/* ── Topbar ──────────────────────────────────────────────────── */
+.dl-topbar {
+  height: 56px; flex-shrink: 0;
+  background: var(--color-surface, #fff);
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px; gap: 16px;
+}
+.dl-topbar__left { display: flex; align-items: center; gap: 12px; }
+.dl-topbar__right { display: flex; align-items: center; gap: 12px; }
+.dl-topbar__avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: #3b82f6; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; cursor: default;
+}
+.dl-theme-btn {
+  background: none; border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 8px; padding: 5px 8px; cursor: pointer; font-size: 16px;
+}
+.dl-theme-btn:hover { background: var(--color-border, #e5e7eb); }
+
+/* ── Content ─────────────────────────────────────────────────── */
+.dl-content {
+  flex: 1; overflow: auto;
+  background: var(--color-bg, #f7fafc);
+}
+/* pages inside use crm-page which has its own header/body */
+.dl-content > * { height: 100%; }
+
+/* ── Responsive ──────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .dl-root { grid-template-columns: 60px minmax(0, 1fr); }
+  .dl-nav__label, .dl-brand-name, .dl-user__info { display: none; }
+  .dl-collapse-btn { display: none; }
+}
+
+/* ContactCenter inside new DashboardLayout — override fixed-height calc */
+.dl-content .cc-layout {
+  height: 100%;
+  min-height: 0;
+}
+
+/* DashboardHome inside new layout */
+.dl-content .dash-main-inner {
+  padding: 0;
+  height: 100%;
+}
+
+/* Old dash-root → hide if accidentally rendered (shouldn't be) */
+.dl-content .dash-main { display: contents; }

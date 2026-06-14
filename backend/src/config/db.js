@@ -1,26 +1,22 @@
-// backend/src/config/db.js
 import mongoose from "mongoose";
 import dotenv from "dotenv";
+import logger from "../utils/logger.js";
 
 dotenv.config();
 
 const MONGO_URI = process.env.MONGODB_URI;
 
 if (!MONGO_URI) {
-  console.error("❌ MONGODB_URI is not defined in .env");
+  logger.error("MONGODB_URI is not defined in .env");
   process.exit(1);
 }
 
 export async function connectDB() {
   try {
-    await mongoose.connect(MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    console.log("✅ Connected to MongoDB (Atlas)");
+    await mongoose.connect(MONGO_URI);
+    logger.info("Connected to MongoDB");
   } catch (err) {
-    console.error("❌ MongoDB connection error:", err);
+    logger.error(`MongoDB connection error: ${err.message}`);
     process.exit(1);
   }
 }
